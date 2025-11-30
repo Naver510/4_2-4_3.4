@@ -16,7 +16,7 @@ app.use((req, res, next) => {
 
 // Serve frontend files from `public` directory
 app.use(express.static('public'));
-
+// In-memory seed data (used only to initialize DB on first run)
 let categories = ['funnyJoke', 'lameJoke'];
 
 let funnyJoke = [
@@ -45,86 +45,89 @@ let lameJoke = [
   }
 ];
 
+// --- SQLite persistence setup ---
+const sqlite3 = require('sqlite3').verbose();
+const path = require('path');
+const dbPath = path.join(__dirname, 'jokebook.db');
+const db = new sqlite3.Database(dbPath);
+
+db.serialize(() => {
+  db.run('CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY, name TEXT UNIQUE)');
+  db.run('CREATE TABLE IF NOT EXISTS jokes (id INTEGER PRIMARY KEY, category TEXT, joke TEXT, response TEXT)');
+
+  // Ensure categories exist
+  const insertCategory = db.prepare('INSERT OR IGNORE INTO categories(name) VALUES (?)');
+  categories.forEach(c => insertCategory.run(c));
+  insertCategory.finalize();
+
+  // Seed jokes only if jokes table is empty
+  db.get('SELECT COUNT(*) AS cnt FROM jokes', (err, row) => {
+    if (err) {
+      console.error('DB count error', err);
+      return;
+    }
+    if (row && row.cnt === 0) {
+      const insertJoke = db.prepare('INSERT INTO jokes(category, joke, response) VALUES (?, ?, ?)');
+      funnyJoke.forEach(j => insertJoke.run('funnyJoke', j.joke, j.response));
+      lameJoke.forEach(j => insertJoke.run('lameJoke', j.joke, j.response));
+      insertJoke.finalize();
+      console.log('Seeded jokes into database');
+    }
+  });
+});
+
 app.get('/jokebook/categories', (req, res) => {
-  res.json(categories);
+  db.all('SELECT name FROM categories', (err, rows) => {
+    if (err) return res.status(500).json({ error: 'db error' });
+    res.json(rows.map(r => r.name));
+  });
 });
 
 app.get('/jokebook/joke/:category', (req, res) => {
   const category = req.params.category;
-  
-  if (!categories.includes(category)) {
-    return res.json({ 'error': `no jokes for category ${category}` });
-  }
-  
-  let jokes;
-  if (category === 'funnyJoke') {
-    jokes = funnyJoke;
-  } else if (category === 'lameJoke') {
-    jokes = lameJoke;
-  }
-  
-  const randomIndex = Math.floor(Math.random() * jokes.length);
-  const randomJoke = jokes[randomIndex];
-  
-  res.json(randomJoke);
+  db.all('SELECT id,joke,response FROM jokes WHERE category = ?', [category], (err, rows) => {
+    if (err) return res.status(500).json({ error: 'db error' });
+    if (!rows || rows.length === 0) return res.json({ error: `no jokes for category ${category}` });
+    const random = rows[Math.floor(Math.random() * rows.length)];
+    res.json({ joke: random.joke, response: random.response });
+  });
 });
 
 app.post('/jokebook/joke/:category', (req, res) => {
   const category = req.params.category;
-
-  if (!categories.includes(category)) {
-    return res.json({ 'error': `no jokes for category ${category}` });
-  }
-
   const { joke, response: resp } = req.body;
-  if (!joke || !resp) {
-    return res.status(400).json({ error: 'request must include joke and response' });
-  }
+  if (!joke || !resp) return res.status(400).json({ error: 'request must include joke and response' });
 
-  const newJoke = { joke, response: resp };
-
-  if (category === 'funnyJoke') {
-    funnyJoke.push(newJoke);
-  } else if (category === 'lameJoke') {
-    lameJoke.push(newJoke);
-  }
-
-  res.json({ success: `joke added to ${category}`, joke: newJoke });
+  // Check category exists
+  db.get('SELECT id FROM categories WHERE name = ?', [category], (err, row) => {
+    if (err) return res.status(500).json({ error: 'db error' });
+    if (!row) return res.json({ error: `no jokes for category ${category}` });
+    db.run('INSERT INTO jokes(category, joke, response) VALUES (?, ?, ?)', [category, joke, resp], function(insertErr) {
+      if (insertErr) return res.status(500).json({ error: 'db insert error' });
+      res.json({ success: `joke added to ${category}`, joke: { id: this.lastID, joke, response: resp } });
+    });
+  });
 });
 
 app.get('/jokebook/stats', (req, res) => {
-  const stats = {
-    funnyJoke: funnyJoke.length,
-    lameJoke: lameJoke.length
-  };
-
-  res.json(stats);
+  db.all('SELECT category, COUNT(*) AS cnt FROM jokes GROUP BY category', (err, rows) => {
+    if (err) return res.status(500).json({ error: 'db error' });
+    const stats = {};
+    rows.forEach(r => { stats[r.category] = r.cnt; });
+    // ensure categories with zero are shown
+    categories.forEach(c => { if (!stats[c]) stats[c] = 0; });
+    res.json(stats);
+  });
 });
 
 app.get('/jokebook/search', (req, res) => {
   const word = req.query.word;
-
-  if (!word || typeof word !== 'string' || word.trim() === '') {
-    return res.json([]);
-  }
-
-  const q = word.trim();
-  const re = new RegExp(q, 'i');
-  const results = [];
-
-  funnyJoke.forEach(j => {
-    if (re.test(j.joke) || re.test(j.response)) {
-      results.push(Object.assign({ category: 'funnyJoke' }, j));
-    }
+  if (!word || typeof word !== 'string' || word.trim() === '') return res.json([]);
+  const q = `%${word.trim()}%`;
+  db.all('SELECT category,joke,response FROM jokes WHERE joke LIKE ? OR response LIKE ?', [q, q], (err, rows) => {
+    if (err) return res.status(500).json({ error: 'db error' });
+    res.json(rows.map(r => ({ category: r.category, joke: r.joke, response: r.response })));
   });
-
-  lameJoke.forEach(j => {
-    if (re.test(j.joke) || re.test(j.response)) {
-      results.push(Object.assign({ category: 'lameJoke' }, j));
-    }
-  });
-
-  res.json(results);
 });
 
 const PORT = process.env.PORT || 3000;
