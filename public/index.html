@@ -22,6 +22,8 @@
     .stats-table { border-collapse: collapse; width: 320px; margin-top: 8px }
     .stats-table th, .stats-table td { border: 1px solid #ddd; padding: 6px 8px; text-align: left }
     .stats-table th { background: #f3f7fa }
+    .search-list { margin-top: 8px }
+    .search-item { padding: 6px 8px; border-bottom: 1px solid #eee }
   </style>
 </head>
 <body>
@@ -30,6 +32,8 @@
     <button id="btn-categories">Pobierz kategorie</button>
     <button id="btn-random">Pobierz losowego żartu (dowolna kategoria)</button>
     <button id="btn-stats">Pokaż statystyki</button>
+    <input id="search-word" type="text" placeholder="Wpisz słowo kluczowe" style="margin-left:8px; padding:6px;" />
+    <button id="btn-search">Szukaj</button>
   </div>
 
   <!-- Add joke form -->
@@ -223,6 +227,39 @@
     document.getElementById('btn-categories').addEventListener('click', fetchCategories);
     document.getElementById('btn-random').addEventListener('click', fetchRandomJokeFromAnyCategory);
     document.getElementById('btn-stats').addEventListener('click', fetchStats);
+
+  // Search handling
+  function renderSearchResults(arr) {
+    if (!arr || arr.length === 0) return '<div class="muted">Brak żartów pasujących do wyszukiwania</div>';
+    return '<div class="search-list">' + arr.map(item => {
+      const cat = item.category ? `[${escapeHTML(item.category)}] ` : '';
+      const joke = escapeHTML(item.joke || '');
+      const resp = escapeHTML(item.response || '');
+      return `<div class="search-item">${cat}${joke} — ${resp}</div>`;
+    }).join('') + '</div>';
+  }
+
+  async function performSearch() {
+    const w = document.getElementById('search-word').value.trim();
+    if (!w) {
+      showStatus('Wpisz słowo kluczowe do wyszukania.');
+      result.innerHTML = '';
+      return;
+    }
+    showStatus(`Szukam: ${w}`);
+    try {
+      const res = await fetch(`/jokebook/search?word=${encodeURIComponent(w)}`);
+      const data = await res.json();
+      showStatus('Wyniki wyszukiwania:');
+      result.innerHTML = renderSearchResults(data);
+    } catch (err) {
+      showStatus('Błąd podczas wyszukiwania');
+      result.innerHTML = `<div class="form-error">Błąd sieci: ${escapeHTML(err.toString())}</div>`;
+    }
+  }
+
+  document.getElementById('btn-search').addEventListener('click', performSearch);
+  document.getElementById('search-word').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); performSearch(); } });
   </script>
 </body>
 </html>
