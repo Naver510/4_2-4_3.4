@@ -88,6 +88,32 @@ app.get('/jokebook/stats', (req, res) => {
   res.json(stats);
 });
 
+app.get('/jokebook/search', (req, res) => {
+  const word = req.query.word;
+
+  if (!word || typeof word !== 'string' || word.trim() === '') {
+    return res.json([]);
+  }
+
+  const q = word.trim();
+  const re = new RegExp(q, 'i');
+  const results = [];
+
+  funnyJoke.forEach(j => {
+    if (re.test(j.joke) || re.test(j.response)) {
+      results.push(Object.assign({ category: 'funnyJoke' }, j));
+    }
+  });
+
+  lameJoke.forEach(j => {
+    if (re.test(j.joke) || re.test(j.response)) {
+      results.push(Object.assign({ category: 'lameJoke' }, j));
+    }
+  });
+
+  res.json(results);
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
