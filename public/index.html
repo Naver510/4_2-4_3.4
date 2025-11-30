@@ -15,6 +15,10 @@
     .joke-text { font-size: 1.05em; margin-bottom: 6px }
     .joke-response { color: #0b6623; font-weight: 600 }
     .cat { font-size: 0.85em; color: #555; margin-bottom: 6px }
+    .form-row { margin: 8px 0; display:flex; flex-direction:column }
+    #form-message { font-size: 0.95em }
+    .form-success { color: #0b6623 }
+    .form-error { color: #b00020 }
   </style>
 </head>
 <body>
@@ -23,6 +27,30 @@
     <button id="btn-categories">Pobierz kategorie</button>
     <button id="btn-random">Pobierz losowego żartu (dowolna kategoria)</button>
   </div>
+
+  <!-- Add joke form -->
+  <form id="add-joke-form" class="box" style="margin-top:16px;">
+    <h3>Dodaj nowy żart</h3>
+    <div class="form-row">
+      <label>Kategoria</label>
+      <select id="form-category">
+        <option value="funnyJoke">funnyJoke</option>
+        <option value="lameJoke">lameJoke</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>Tekst żartu</label>
+      <input id="form-joke" type="text" placeholder="Wpisz treść żartu" style="width:100%" />
+    </div>
+    <div class="form-row">
+      <label>Odpowiedź</label>
+      <input id="form-response" type="text" placeholder="Wpisz odpowiedź" style="width:100%" />
+    </div>
+    <div style="margin-top:8px">
+      <button id="btn-add-joke" type="submit">Dodaj żart</button>
+    </div>
+    <div id="form-message" style="margin-top:8px"></div>
+  </form>
 
   <div id="output" class="box">
     <div id="status" class="muted">Naciśnij przycisk, aby rozpocząć.</div>
@@ -120,6 +148,50 @@
         showResult(err.toString());
       }
     }
+
+  // Add-joke form handling
+  const addForm = document.getElementById('add-joke-form');
+  const formMessage = document.getElementById('form-message');
+
+  function showFormMessage(msg, isError) {
+    formMessage.textContent = msg;
+    formMessage.className = isError ? 'form-error' : 'form-success';
+  }
+
+  addForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    showFormMessage('Wysyłam...', false);
+
+    const category = document.getElementById('form-category').value;
+    const jokeText = document.getElementById('form-joke').value.trim();
+    const responseText = document.getElementById('form-response').value.trim();
+
+    if (!jokeText || !responseText) {
+      showFormMessage('Uzupełnij pola żartu i odpowiedzi.', true);
+      return;
+    }
+
+    try {
+      const res = await fetch(`/jokebook/joke/${encodeURIComponent(category)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ joke: jokeText, response: responseText })
+      });
+
+      const body = await res.json();
+      if (body && body.error) {
+        showFormMessage(`Błąd: ${body.error}`, true);
+      } else {
+        showFormMessage('Żart dodany pomyślnie.', false);
+        // clear inputs
+        document.getElementById('form-joke').value = '';
+        document.getElementById('form-response').value = '';
+        // update stats or UI if desired
+      }
+    } catch (err) {
+      showFormMessage('Błąd sieci: ' + err.toString(), true);
+    }
+  });
 
     document.getElementById('btn-categories').addEventListener('click', fetchCategories);
     document.getElementById('btn-random').addEventListener('click', fetchRandomJokeFromAnyCategory);
