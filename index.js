@@ -3,6 +3,19 @@
 const express = require('express');
 const app = express();
 app.use(express.json());
+// Simple CORS middleware (allows all origins)
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  if (req.method === 'OPTIONS') {
+    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+    return res.sendStatus(200);
+  }
+  next();
+});
+
+// Serve frontend files from `public` directory
+app.use(express.static('public'));
 
 let categories = ['funnyJoke', 'lameJoke'];
 

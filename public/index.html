@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Jokebook UI</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    button { margin: 6px 0; padding: 8px 12px; }
+    .box { margin-top: 12px; padding: 12px; border: 1px solid #ddd; border-radius: 6px; }
+    .muted { color: #666; font-size: 0.9em }
+    ul { padding-left: 18px; }
+    .category { font-weight: 600; color: #2a6f97; margin: 6px 0; }
+    .joke-card { border: 1px solid #eee; padding: 10px; margin: 8px 0; border-radius: 6px; background: #fafafa }
+    .joke-text { font-size: 1.05em; margin-bottom: 6px }
+    .joke-response { color: #0b6623; font-weight: 600 }
+    .cat { font-size: 0.85em; color: #555; margin-bottom: 6px }
+  </style>
+</head>
+<body>
+  <h1>Jokebook — Frontend Demo</h1>
+  <div>
+    <button id="btn-categories">Pobierz kategorie</button>
+    <button id="btn-random">Pobierz losowego żartu (dowolna kategoria)</button>
+  </div>
+
+  <div id="output" class="box">
+    <div id="status" class="muted">Naciśnij przycisk, aby rozpocząć.</div>
+    <div id="result"></div>
+  </div>
+
+  <script>
+    const status = document.getElementById('status');
+    const result = document.getElementById('result');
+
+    function showStatus(s) { status.textContent = s; }
+
+    function escapeHTML(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function renderCategories(arr) {
+      if (!arr || arr.length === 0) return '<div class="muted">Brak kategorii</div>';
+      return '<ul>' + arr.map(c => `<li class="category">${escapeHTML(c)}</li>`).join('') + '</ul>';
+    }
+
+    function renderJokeCard(item) {
+      const cat = item.category ? `<div class="cat">${escapeHTML(item.category)}</div>` : '';
+      return `
+        <div class="joke-card">
+          ${cat}
+          <div class="joke-text">${escapeHTML(item.joke || item.joke)}</div>
+          <div class="joke-response">${escapeHTML(item.response || item.response)}</div>
+        </div>`;
+    }
+
+    function renderResults(data) {
+      if (data === null || data === undefined) return '';
+
+      // categories array (array of strings)
+      if (Array.isArray(data) && data.every(d => typeof d === 'string')) {
+        return renderCategories(data);
+      }
+
+      // single object with category + joke
+      if (data && typeof data === 'object' && data.joke && data.response && data.category) {
+        return renderJokeCard(data);
+      }
+
+      // array of joke objects
+      if (Array.isArray(data) && data.every(d => typeof d === 'object' && (d.joke || d.response))) {
+        if (data.length === 0) return '<div class="muted">Brak wyników</div>';
+        return data.map(renderJokeCard).join('');
+      }
+
+      // fallback: pretty JSON
+      return `<pre>${escapeHTML(JSON.stringify(data, null, 2))}</pre>`;
+    }
+
+    function showResult(obj) { result.innerHTML = renderResults(obj); }
+
+    async function fetchCategories() {
+      showStatus('Pobieram kategorie...');
+      showResult('');
+      try {
+        const res = await fetch('/jokebook/categories');
+        const data = await res.json();
+        showStatus('Kategorie pobrane.');
+        showResult(data);
+        return data;
+      } catch (err) {
+        showStatus('Błąd podczas pobierania kategorii');
+        showResult(err.toString());
+        return [];
+      }
+    }
+
+    async function fetchRandomJokeFromAnyCategory() {
+      showStatus('Pobieram kategorie...');
+      showResult('');
+      try {
+        const categories = await fetchCategories();
+        if (!categories || categories.length === 0) {
+          showStatus('Brak kategorii.');
+          return;
+        }
+        const randomCategory = categories[Math.floor(Math.random() * categories.length)];
+        showStatus(`Pobieram losowego żartu z kategorii: ${randomCategory}`);
+        const res = await fetch(`/jokebook/joke/${encodeURIComponent(randomCategory)}`);
+        const joke = await res.json();
+        showStatus('Żart pobrany.');
+        showResult(Object.assign({ category: randomCategory }, joke));
+      } catch (err) {
+        showStatus('Błąd podczas pobierania żartu');
+        showResult(err.toString());
+      }
+    }
+
+    document.getElementById('btn-categories').addEventListener('click', fetchCategories);
+    document.getElementById('btn-random').addEventListener('click', fetchRandomJokeFromAnyCategory);
+  </script>
+</body>
+</html>
